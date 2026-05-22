@@ -6,7 +6,7 @@ topics: ["claudecode", "statusline", "bash", "productivity", "tui"]
 published: true
 ---
 
-![cover](/images/claude-code-statusline-pacing-compass/hero.png)
+![cover](/images/claude-code-statusline-pacing-compass/hero.jpg)
 
 港までの距離と、樽の水の残り。船で命を握る数字はこの二つだけだ。
 甲板に立つ船長が、毎秒それを別々の頭で計算してると思うか？ しねえよ。
@@ -66,7 +66,7 @@ opus 4.7  ⏳ 3h45m  🪙 47%  📊 2d3h  🪙 12%
 
 これを見ろ。5 時間窓は時間 > トークンで「水が足りねえ気味」、7 日窓は時間が遥かにあるのに樽がほぼ空、つまり**今週は明らかに使い過ぎ**だと、ひと目で判る。`12%` という数字も `2d3h` という時刻も、もう要らねえ。バーが教えてくれる。
 
-![羊皮紙に上下二段で描かれたバーを、真鍮のコンパスで測る](/images/claude-code-statusline-pacing-compass/spot-3-bars-parchment.png =480x)
+![羊皮紙に上下二段で描かれたバーを、真鍮のコンパスで測る](/images/claude-code-statusline-pacing-compass/spot-3-bars-parchment.jpg =480x)
 
 おい野郎ども、これは宝だ。
 
@@ -263,7 +263,7 @@ flowchart LR
 
 ### パターン 1: 時間バー > トークンバー — 水が足りねえ
 
-![帆を畳んで速度を落とす船。樽は空、海はまだ広い](/images/claude-code-statusline-pacing-compass/spot-1-water-shortage.png =480x)
+![帆を畳んで速度を落とす船。樽は空、海はまだ広い](/images/claude-code-statusline-pacing-compass/spot-1-water-shortage.jpg =480x)
 
 港まではまだ遠い。なのに樽の中の真水はもう底が見えてる。これは**使い過ぎ**だ。
 
@@ -271,7 +271,7 @@ flowchart LR
 
 ### パターン 2: 時間バー < トークンバー — 余ってる
 
-![「もう一艘出せ！」並走する仲間船を呼ぶ船長](/images/claude-code-statusline-pacing-compass/spot-2-parallel-ships.png =480x)
+![「もう一艘出せ！」並走する仲間船を呼ぶ船長](/images/claude-code-statusline-pacing-compass/spot-2-parallel-ships.jpg =480x)
 
 樽はまだ半分以上ある。なのにリセットは目前。これは**もう一艘出すタイミング**だ。
 
