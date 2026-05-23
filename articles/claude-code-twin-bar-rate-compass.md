@@ -222,7 +222,239 @@ render_rate_bar() {
 }
 ```
 
-もう一個、地味だが効いてる工夫として、バー幅は **pane 幅から左セグメントの実幅を引いて逆算** してる。細い pane で折り返したら台無しだからな。詳細は割愛する。
+### 右寄せの艤装——pane 幅から逆算してバーを右に飛ばす
+
+もう一個、地味だが効いてる工夫の話だ。最初は割愛するつもりだったが、観念して全部出す。バー幅は **pane 幅から左セグメントの実幅を引いて逆算** してる。細い pane で折り返したら台無しだからな。ただこの右寄せ、口で言うほど素直じゃねえ。**何度も殴られて、ようやくまともに動くようになった**。順を追って晒す。
+
+![左セグメントが左端、二段バーのパネルが右端、間が空白で正しく右寄せされている statusline のスクリーンショット](/images/claude-code-twin-bar-rate-compass/right-aligned-statusline.png =960x)
+
+組み上がるとこうなる。左端に model / context% / 1Password の token 期限、右端に二段バーのパネル。その間は呼吸用の空白だ。一行に詰まってて、樽の蓋が両端に揃ってる。これが**正しく動いてる状態**だ。
+
+#### 何が難しいのか——五つの罠
+
+ナイーブに `printf` で右パディング、で終わらせようとすると、Claude Code の statusline はことごとく嘲笑ってくる。罠はこいつらだ。
+
+- **制御端末が無い**。Claude Code が statusline スクリプトを spawn する subprocess には controlling TTY が無い。macOS だと `</dev/tty` を読みに行くと "Device not configured" で死ぬ。`stty size` も `tput cols` もこの経路で取りに行くから、両方とも何も返さねえ
+- **`$COLUMNS` が unset**。subprocess なんだから親シェルの export が来てるとは限らねえ
+- **Powerline / Nerd Font の PUA グリフは `wc -m` で数えると嘘になる**。`▀` の半ブロック、樽蓋の `` `` も含めて、ANSI CSI も OSC 8 リンクも全部入ってる。`wc -m` だと escape まで数える、`wc -c` はバイト数。両方ハズレ
+- **Claude Code の `statusLine.padding` が見えない margin を予約してる**。[settings リファレンス](https://code.claude.com/docs/en/settings) に書いてあるが、`padding: -2` だと content area は pane 幅から 2 セル分削られる。これを引かないと右の樽蓋が `…` で切り落とされる
+- **Zellij で複数の Claude pane を並べると `FOCUSED` で自分を識別できない**。同時に focus 状態になれるのは一つだけ。残りの pane が focused pane の幅を流用すると、背景の pane は右セグメントが千切れる
+
+ひとつずつ殴られて、対策を積み上げた。
+
+#### 第一の罠——pane 幅をどう取る
+
+ぱっと思いつくのが `zellij action dump-screen` の出力を `visible-width` に通すやつだ。**これがまず落とし穴だった**。
+
+`dump-screen` は現在の viewport を返すが、各行は実際のコンテンツ幅で止まる——右端まで埋めてくれねえ。つまり「描画済みの行のうち最も幅広いもの」が pane 幅以下になる。最悪のシナリオがすぐ訪れた。**直前の statusline 自身がいちばん幅広い可視行になり、毎回 refresh するたびに pane が縮んで見える**——自己収縮ループ。哀れにも自分の尻尾を食い続けた。
+
+正解は `zellij action list-panes -g -s`。pane の幾何を直接 IPC で返してくる。ヒューリスティクスも feedback loop も無し。Zellij じゃなきゃ `stty` / `tput` / `$COLUMNS` / 最後の砦 120 へとフォールバックする。
+
+```bash:~/.config/claude/bin/term-cols.sh
+#!/usr/bin/env bash
+# term-cols — print the host terminal/pane's column count.
+#
+# Usage:
+#   term-cols
+#
+# Fallback chain:
+#   1. Zellij IPC: `zellij action list-panes` reports each pane's exact
+#      ROWS/COLS — pick the focused terminal pane's COLS
+#   2. `stty size </dev/tty`
+#   3. `tput cols </dev/tty`
+#   4. $COLUMNS
+#   5. 120  (last-resort default; also kicks in if the detected value
+#           is < 40, which is usually a sign of a broken context)
+#
+# Motivation: scripts spawned without a controlling TTY (Claude Code
+# statusline subprocess, hook handlers, etc.) can't use stty/tput
+# against /dev/tty — those silently fail and COLUMNS is unset. Inside
+# Zellij we can still recover the real pane width via IPC.
+#
+# Why not `dump-screen | visible-width`: dump-screen returns the current
+# viewport with each line as wide as its actual content (no padding to
+# pane width). The max line width is at most the pane width, and is
+# strictly less than it whenever no visible row currently fills the
+# rightmost cell. Worst case: the previous statusline becomes the widest
+# visible line, locking the script into a self-shrinking feedback loop.
+# `list-panes -g -s` reports the exact pane geometry directly — no
+# heuristics, no feedback loop.
+
+# NB: `set -e` is intentionally OFF. The /dev/tty fallback below relies on
+# the script continuing past redirect failures — Claude Code statusline
+# subprocesses have no controlling TTY on macOS, so `</dev/tty` errors
+# with "Device not configured" and would abort the script under `set -e`,
+# leaving stdout empty and the caller computing nonsense widths.
+set -uo pipefail
+
+# Detect we're inside zellij. The classic `$ZELLIJ` indicator is NOT
+# always set in subprocesses that Claude Code spawns (only `ZELLIJ_PANE_ID`
+# and `ZELLIJ_SESSION_NAME` reliably propagate). Use the session-name
+# presence as the truth, with `$ZELLIJ` as a secondary signal.
+in_zellij() {
+    [ -n "${ZELLIJ_SESSION_NAME:-}" ] || [ -n "${ZELLIJ:-}" ]
+}
+
+cols=""
+if in_zellij && command -v zellij >/dev/null 2>&1; then
+    # list-panes -g -s output is a header row plus one row per pane,
+    # fields separated by 2+ spaces (so pane titles containing single
+    # spaces stay in one field).
+    #
+    # Identify *our own* pane via $ZELLIJ_PANE_ID, not by FOCUSED — when
+    # multiple Claude instances run in separate panes, only one is
+    # focused at a time, so background panes would otherwise inherit the
+    # focused pane's width and truncate their right segment.
+    # $ZELLIJ_PANE_ID is the numeric suffix; list-panes prints
+    # `terminal_<id>` in the PANE_ID column.
+    panes_out=$(zellij action list-panes -g -s 2>/dev/null)
+    if [ -n "${ZELLIJ_PANE_ID:-}" ]; then
+        cols=$(printf '%s\n' "$panes_out" | awk -F'  +' -v want="terminal_${ZELLIJ_PANE_ID}" '
+            NR==1 { for (i=1; i<=NF; i++) col[$i] = i; next }
+            $col["PANE_ID"]==want { print $col["COLS"]; exit }
+        ')
+    fi
+    # Fallback: subprocess env may have dropped ZELLIJ_PANE_ID, or the
+    # pane id didn't match (race during pane creation). Use focused pane.
+    [ -z "$cols" ] && cols=$(printf '%s\n' "$panes_out" | awk -F'  +' '
+        NR==1 { for (i=1; i<=NF; i++) col[$i] = i; next }
+        $col["TYPE"]=="terminal" && $col["FOCUSED"]=="true" { print $col["COLS"]; exit }
+    ')
+fi
+[ -z "$cols" ] && cols=$( { stty size </dev/tty 2>/dev/null | awk '{print $2}'; } 2>/dev/null )
+[ -z "$cols" ] && cols=$( { tput cols </dev/tty 2>/dev/null; } 2>/dev/null )
+[ -z "$cols" ] && cols="${COLUMNS:-120}"
+[ "$cols" -lt 40 ] 2>/dev/null && cols=120
+printf '%s\n' "$cols"
+```
+
+注目してほしい二箇所。一つは `set -e` を**意図的に外してる**こと。`</dev/tty` が "Device not configured" で死ぬのを許容しないと、次の fallback に進めずに stdout が空になる。もう一つは `$ZELLIJ_PANE_ID` で自分の pane を識別してること——`FOCUSED==true` で組んだ初版は二枚の Claude を並べた瞬間に背景 pane が崩壊した。`$ZELLIJ_PANE_ID` だけが subprocess に確実に伝わる pane の身分証だ。
+
+#### 第二の罠——可視幅をどう数える
+
+「左セグメントの実幅」って簡単に言うが、中身は ANSI CSI と OSC 8 ハイパーリンクと Powerline の樽蓋と Nerd Font の glyph と、ことによっては全角文字も混ざる。`wc -m` も `wc -c` も嘘をつく。**実際にターミナルで何セル占めるかを返す関数が要る**。
+
+Perl にやらせた。理由は二つあって、(a) `\p{East_Asian_Width=Wide}` をネイティブに引ける、(b) Bash の文字列操作じゃこの正規表現は地獄。
+
+```perl:~/.config/claude/bin/visible-width.pl
+#!/usr/bin/env perl
+# visible-width — column width of a string (or stream) after stripping
+# ANSI CSI / OSC 8 escapes and accounting for Nerd Font / Powerline
+# Private Use Area glyphs and East Asian Wide characters.
+#
+# Usage:
+#   visible-width "string"     # single-string mode
+#   command | visible-width    # stream mode — returns max line width
+#
+# Naïve `wc -m` / `wc -c` are off because of escape sequences and
+# multi-cell glyphs; this returns the actual cell count you'd see in
+# the terminal.
+#
+# Width rules (in priority order):
+#   1. ANSI CSI / OSC 8 escapes are stripped (width 0)
+#   2. Control chars (< 0x20) → 0
+#   3. Private Use Area (U+E000-U+F8FF, U+F0000-U+FFFFD) → $pua_w (default 1).
+#      Nerd Font + Powerline glyphs live here; modern terminals render as 1.
+#      Set VISIBLE_WIDTH_PUA=2 for older iTerm2 / explicit 2-cell-font setups.
+#   4. East Asian Wide / Fullwidth (CJK, fullwidth ASCII, etc.) → 2
+#   5. Everything else → 1 (this includes Mathematical Alphanumeric Symbols
+#      U+1D400-U+1D7FF, which Unicode classifies as Neutral — terminals
+#      with proper math glyphs render them at 1 cell)
+
+use strict;
+use warnings;
+use utf8;
+use open ':std', ':encoding(UTF-8)';
+use Encode qw(decode);
+
+# @ARGV is raw bytes from the OS — `use open` only covers file handles,
+# so without this a UTF-8-encoded glyph in $ARGV[0] would be counted
+# byte-by-byte and bloat the width count.
+@ARGV = map { decode('UTF-8', $_) } @ARGV;
+
+my $pua_w = $ENV{VISIBLE_WIDTH_PUA} || 1;
+
+sub measure {
+    my ($line) = @_;
+    $line =~ s/\x1b\[[0-9;]*[a-zA-Z]//g;
+    $line =~ s/\x1b\][^\x07]*\x07//g;
+    my $w = 0;
+    for my $c (split //, $line) {
+        my $o = ord $c;
+        if ($o < 0x20) { next }
+        if (($o >= 0xE000 && $o <= 0xF8FF) || ($o >= 0xF0000 && $o <= 0xFFFFD)) { $w += $pua_w; next }
+        if ($c =~ /\p{East_Asian_Width=Wide}/ || $c =~ /\p{East_Asian_Width=Fullwidth}/) { $w += 2; next }
+        $w += 1;
+    }
+    return $w;
+}
+
+if (@ARGV) {
+    print measure($ARGV[0]);
+    exit 0;
+}
+
+if (-t STDIN) {
+    print STDERR "Usage: visible-width <string>\n";
+    print STDERR "       command | visible-width\n";
+    exit 2;
+}
+
+my $max = 0;
+while (my $line = <STDIN>) {
+    chomp $line;
+    my $w = measure($line);
+    $max = $w if $w > $max;
+}
+print $max;
+```
+
+ポイントは PUA を 1 セル扱いにしてること。Nerd Font も Powerline も Private Use Area (U+E000-U+F8FF, U+F0000-U+FFFFD) に住んでて、最近のターミナルなら 1 セルで描画する。古い iTerm2 や明示的に 2-cell フォント運用してるなら `VISIBLE_WIDTH_PUA=2` を渡せ。あと `@ARGV` の `decode('UTF-8', ...)` を忘れると、引数で渡した glyph がバイト数で数えられて幅がブクブクに膨れる。これも一回やらかした。
+
+#### 第三の罠——padding を引き忘れる
+
+`statusLine.padding` の話。Claude Code の [settings リファレンス](https://code.claude.com/docs/en/settings) に書いてあるが、`statusLine.padding: -2` だと content area は pane 幅から 2 セル削られる。これを引き忘れると、右端ぴったりに配置したつもりの樽蓋が `…` で切り落とされる。
+
+#### 第四の罠——overhead 定数の chase
+
+二段バー panel の中には bar 本体だけじゃなく、icon、ラベル、Powerline の左右 cap、5h と 7d を繋ぐ separator が乗ってる。bar 二本ぶんを除いた**残り**を引かないと panel 幅を決められない。
+
+これは数式じゃ出ねえから測った。最初 26 で組んだが、ラベルが `3h45m` から `12m` に変わる瞬間に右が溢れる現象が出た。±4 セルの揺らぎを吸収して **30 に上げて**安定した。経験的定数だ、堂々と書いとけ。
+
+#### 全部繋ぐ——`statusline.sh` の右寄せ核
+
+ここまでの罠を全部かいくぐった結果が、`statusline.sh` の右寄せブロックだ。`term_cols` で pane 幅取って、padding 引いて、`visible_width` で左セグメントの実幅測って、残りから panel overhead 引いて bar 幅を逆算、右セグメント描いて、最後に `printf '%s%*s%s\n'` で左セグメント＋空白＋右セグメントを一行で吐く。
+
+```bash:~/.config/claude/bin/statusline.sh
+term_cols=$("$term_cols_bin")
+# Claude Code reserves horizontal margin around the statusline content
+# area. The `statusLine.padding` setting in settings.json controls this:
+# `padding: -2` means the content area is pane_width - |padding| = -2 cells
+# narrower than the raw pane width. Subtract it here so the right segment
+# stays inside the visible area instead of getting truncated with "…".
+STATUSLINE_PADDING="${STATUSLINE_PADDING:-2}"
+term_cols=$(( term_cols - STATUSLINE_PADDING ))
+left_w=$("$visible_width" "$line1_left")
+
+# Pick rate_bar_width so that the rendered panel fits in (term_cols - left_w - 1).
+# Panel width = 2 * bar_width + RATE_BAR_PANEL_OVERHEAD (icons, labels, caps,
+# separator). The overhead is empirically 26; bump to 30 to absorb the ±4-char
+# variance from label format changes (e.g. "3h45m" vs "12m"). Clamp to [5, 20].
+RATE_BAR_PANEL_OVERHEAD=30
+rate_bar_width=$(( (term_cols - left_w - 1 - RATE_BAR_PANEL_OVERHEAD) / 2 ))
+[ "$rate_bar_width" -gt 20 ] && rate_bar_width=20
+[ "$rate_bar_width" -lt 5 ] && rate_bar_width=5
+line1_right=$(echo "$input" | RATE_BAR_WIDTH=$rate_bar_width "$bin_dir/rate-bars.sh" --theme "$RATE_BARS_THEME")
+right_w=$("$visible_width" "$line1_right")
+
+pad=$(( term_cols - left_w - right_w ))
+[ "$pad" -lt 1 ] && pad=1
+printf '%s%*s%s\n' "$line1_left" "$pad" "" "$line1_right"
+```
+
+最後の `printf '%s%*s%s\n'` がキモだ。`%*s` で「指定したセル数ぶんの空白」を間に打ち込む。これで左右の二段になる。`pad` が負になる細い pane では 1 で底打ちして、最低限の空白だけ残す。
+
+これだけ書いて 25 行。だが、ここに辿り着くまでに殴られた回数は数えてねえ。**右寄せは tput cols だけじゃ済まねえ**、それだけは覚えて帰ってくれ。
 
 ……と、ここまで書いたところで「肝心の本体が無きゃ真似できねえ」と読者から艫を叩かれた。確かにそうだ。樽の水が見えても、柄杓の作りを知らなきゃ自分じゃ彫れねえ。一度引いた啖呵を引っ込めるのは船長として恥だが、出し惜しみして誰も読めねえ海図を撒くよりはマシだ。観念して晒す——ただし本体は別用途のテーマ辞書 / subscript ラベル / plain モード / 色エイリアスの群れで太ってるので、二段バー描画に効く骨だけ抜き出した版を貼る。
 
