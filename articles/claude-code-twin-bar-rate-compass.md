@@ -88,9 +88,11 @@ Claude Code は設定された statusline コマンドを呼ぶたびに、stdin
 
 入力スキーマの全貌は [statusline のリファレンス](https://code.claude.com/docs/en/statusline) に書いてある。中身を実際に覗きたきゃ、statusline スクリプトの先頭で `tee /tmp/cc-statusline-$$.json` でも噛ませて jq で漁れ。これは何度も効く手筋だ、覚えとけ。
 
-## 最小実装——コピペで動く 80 行
+## まず動かす——80 行の教材版
 
-`~/.config/claude/bin/statusline-pacing.sh` に置く前提だ。中身はこれだけ。
+御託より先に動くものを見せる。お前らが脳味噌空にしてもまず帆を張れるよう、**艤装を全部削いで二段バーの骨だけ残した教材版**を置いとく。本物の艤装は次のセクションで晒すから、まずはこいつで甲板に縞模様を出せ。`~/.config/claude/bin/statusline-pacing.sh` に置く前提だ。
+
+:::details 教材版 statusline-pacing.sh — まず動かす用の 80 行
 
 ```bash:~/.config/claude/bin/statusline-pacing.sh
 #!/usr/bin/env bash
@@ -171,6 +173,8 @@ render_window "7d" "$SEVEN_USED" "$SEVEN_RESET" $(( 7 * 86400 ))
 これだけだ。コピペで動く。`chmod +x` を忘れんなよ。
 
 中で起きてることは単純だ。残量比 (0.0〜1.0) を出して、8 分割のブロック文字でバーを描いて、残量が薄いほど赤くする。`jq` の `// 0` で「フィールドが無い時は 0 に倒す」のは [jq マニュアルの alternative operator](https://jqlang.org/manual/#alternative-operator) の常套句だ、覚えとけ。
+
+:::
 
 ## 実装の正直さ——俺はもう一段奥を走らせてる
 
@@ -456,9 +460,9 @@ printf '%s%*s%s\n' "$line1_left" "$pad" "" "$line1_right"
 
 これだけ書いて 25 行。だが、ここに辿り着くまでに殴られた回数は数えてねえ。**右寄せは tput cols だけじゃ済まねえ**、それだけは覚えて帰ってくれ。
 
-……と、ここまで書いたところで「肝心の本体が無きゃ真似できねえ」と読者から艫を叩かれた。確かにそうだ。樽の水が見えても、柄杓の作りを知らなきゃ自分じゃ彫れねえ。一度引いた啖呵を引っ込めるのは船長として恥だが、出し惜しみして誰も読めねえ海図を撒くよりはマシだ。観念して晒す——ただし本体は別用途のテーマ辞書 / subscript ラベル / plain モード / 色エイリアスの群れで太ってるので、二段バー描画に効く骨だけ抜き出した版を貼る。
+### 樽職人——`two-row-indicator` が半ブロックで二段を描く
 
-:::details two-row-indicator — 二段バー描画に必要な骨だけ抜いた版 (約 95 行)
+ここがこの艤装の心臓だ。前のセクションで `render_rate_bar` が比率二本を投げてた相手、半ブロックで上下を塗り分けてる張本人。手元の本体は別用途のテーマ辞書 / subscript ラベル / plain モード / 色エイリアスの群れで太ってるから、**二段バー描画に効く骨だけ抜き出した版**を貼る。
 
 ```fish
 #!/usr/bin/env fish
@@ -569,8 +573,6 @@ if not set -q _flag_no_newline
     echo
 end
 ```
-
-:::
 
 fish が肌に合わなきゃ Rust でも Go でも書き直せ。要は半ブロック `▀` の前景色 (上の比率) と背景色 (下の比率) を独立に塗り分けて、両端にラベルを添えるだけだ。仕掛けは単純、彫り方は船長の好み。
 
