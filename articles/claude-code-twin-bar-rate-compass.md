@@ -214,6 +214,7 @@ render_rate_bar() {
   two-row-indicator \
     --width "$RATE_BAR_WIDTH" \
     --top "$top_color" --bottom "$bottom_color" --bg "$bg_color" \
+    --label \
     --top-label-text    "$(format_remaining_time $time_remaining) " \
     --bottom-label-text " $(printf '%d%%' $((100 - used_pct)))" \
     --no-newline \
@@ -221,356 +222,86 @@ render_rate_bar() {
 }
 ```
 
-:::message
-**`two-row-indicator` の I/O だけ示しとく**——本体は別の航海の話だが、口の形だけ判れば fish でも Rust でも Go でも書き直せる。
-
-- 入力: 0.0〜1.0 の比率を 2 つ位置引数で受ける (`top_ratio`, `bottom_ratio`)
-- 出力: 1 行の half-block 文字列。各セルの前景色 = `--top` 指定色 (時間バー部)、背景色 = `--bottom` 指定色 (トークンバー部)
-- 主オプション: `--width N` / `--top RRGGBB` / `--bottom RRGGBB` / `--bg RRGGBB` (未充填部) / `--top-label-text "..."` / `--bottom-label-text "..."` / `--no-newline`
-- ラベルは上下それぞれの半分に「焼き込む」——文字単位で重なるセルでは前景 / 背景の塗りをラベル文字色に置換する
-:::
-
 もう一個、地味だが効いてる工夫として、バー幅は **pane 幅から左セグメントの実幅を引いて逆算** してる。細い pane で折り返したら台無しだからな。詳細は割愛する。
 
-……と、ここまで書いたところで「肝心の本体が無きゃ真似できねえ」と読者から艫を叩かれた。確かにそうだ。樽の水が見えても、柄杓の作りを知らなきゃ自分じゃ彫れねえ。一度引いた啖呵を引っ込めるのは船長として恥だが、出し惜しみして誰も読めねえ海図を撒くよりはマシだ。観念して全量晒す。
+……と、ここまで書いたところで「肝心の本体が無きゃ真似できねえ」と読者から艫を叩かれた。確かにそうだ。樽の水が見えても、柄杓の作りを知らなきゃ自分じゃ彫れねえ。一度引いた啖呵を引っ込めるのは船長として恥だが、出し惜しみして誰も読めねえ海図を撒くよりはマシだ。観念して晒す——ただし本体は別用途のテーマ辞書 / subscript ラベル / plain モード / 色エイリアスの群れで太ってるので、二段バー描画に効く骨だけ抜き出した版を貼る。
 
-:::details two-row-indicator の fish 本体 (399 行)
+:::details two-row-indicator — 二段バー描画に必要な骨だけ抜いた版 (約 95 行)
 
-```fish:~/.config/bin/two-row-indicator
+```fish
 #!/usr/bin/env fish
 #
-# Render two 0..1 ratios as one terminal row.
+# Render two 0..1 ratios as one terminal row using half-block glyphs.
 #
 # Usage: two-row-indicator [OPTIONS] TOP BOTTOM
-#   -w, --width N          Cell width (default: 20)
-#       --theme NAME       Apply a built-in palette (tokyonight, catppuccin,
-#                          nord, dracula, gruvbox, cyberpunk, muted-jewel).
-#                          Individual color flags override the theme.
-#       --top COLOR        Top fill color (default: 8fbcbb)
-#       --bottom COLOR     Bottom fill color (default: 88c0d0)
-#       --bg COLOR         Empty background color (default: 3b4252)
-#       --fg COLOR         Common alias for --top and --bottom
-#       --top-color COLOR  Alias for --top
-#       --bottom-color COLOR
-#                          Alias for --bottom
-#       --track-color COLOR
-#                          Alias for --bg
-#       --label-color COLOR
-#                          Label color for both labels
-#       --top-label COLOR  Top label color (default: top color)
-#       --bottom-label COLOR
-#                          Bottom label color (default: bottom color)
-#       --top-label-color COLOR
-#                          Top label color (default: top color)
-#       --bottom-label-color COLOR
-#                          Bottom label color (default: bottom color)
-#       --top-label-text TEXT
-#                          Override generated top percentage label
-#       --bottom-label-text TEXT
-#                          Override generated bottom percentage label
-#       --small-labels     Render labels as small superscript / subscript glyphs
-#                          (default: full-size half-width characters)
-#   -l, --label            Show top/bottom percentage labels
-#       --plain            Use block glyphs without ANSI colors
-#   -n, --no-newline       Do not print a trailing newline
-#
-# Examples:
-#   two-row-indicator 0.25 0.75
-#   two-row-indicator --label 0.6 0.3
-#   two-row-indicator --label --small-labels 0.6 0.3
-#   two-row-indicator --label --top-label-text CPU --bottom-label-text MEM 0.6 0.3
-#   two-row-indicator --label --small-labels --top-label-text CPU --bottom-label-text mem 0.6 0.3
-#   two-row-indicator --label --fg yellow --bg 3b4252 0.6 0.3
-#   two-row-indicator --width 12 --top yellow --bottom cyan 0.6 0.3
-#   two-row-indicator --plain 0.6 0.3
-#   two-row-indicator --theme catppuccin --label 0.6 0.3
-#   two-row-indicator --theme muted-jewel --top-color ff0000 --label 0.6 0.3
+#   -w, --width N             Cell width (default: 20)
+#       --top COLOR           Top fill color (default: 8fbcbb)
+#       --bottom COLOR        Bottom fill color (default: 88c0d0)
+#       --bg COLOR            Empty background color (default: 3b4252)
+#   -l, --label               Show labels (default: top% / bottom%)
+#       --top-label-text T    Override the top label
+#       --bottom-label-text T Override the bottom label
+#   -n, --no-newline          Do not print a trailing newline
 
-function __two_row_indicator_usage
-    printf '%s\n' \
-        'Usage: two-row-indicator [OPTIONS] TOP BOTTOM' \
-        '' \
-        'Render two 0..1 ratios as one terminal row.' \
-        '' \
-        'Options:' \
-        '  -w, --width N          Cell width (default: 20)' \
-        '      --theme NAME       Apply a built-in palette. Available themes:' \
-        '                         tokyonight, catppuccin, nord, dracula,' \
-        '                         gruvbox, cyberpunk, muted-jewel.' \
-        '                         Individual color flags override the theme.' \
-        '      --top COLOR        Top fill color (default: 8fbcbb)' \
-        '      --bottom COLOR     Bottom fill color (default: 88c0d0)' \
-        '      --bg COLOR         Empty background color (default: 3b4252)' \
-        '      --fg COLOR         Common alias for --top and --bottom' \
-        '      --top-color COLOR  Alias for --top' \
-        '      --bottom-color COLOR' \
-        '                         Alias for --bottom' \
-        '      --track-color COLOR' \
-        '                         Alias for --bg' \
-        '      --label-color COLOR' \
-        '                         Label color for both labels' \
-        '      --top-label COLOR  Top label color (default: top color)' \
-        '      --bottom-label COLOR' \
-        '                         Bottom label color (default: bottom color)' \
-        '      --top-label-color COLOR' \
-        '                         Top label color (default: top color)' \
-        '      --bottom-label-color COLOR' \
-        '                         Bottom label color (default: bottom color)' \
-        '      --top-label-text TEXT' \
-        '                         Override generated top percentage label' \
-        '      --bottom-label-text TEXT' \
-        '                         Override generated bottom percentage label' \
-        '      --small-labels     Render labels as small superscript / subscript glyphs' \
-        '                         (default: full-size half-width characters)' \
-        '  -l, --label            Show top/bottom percentage labels' \
-        '      --plain            Use block glyphs without ANSI colors' \
-        '  -n, --no-newline       Do not print a trailing newline' \
-        '  -h, --help             Show this help'
-end
-
-function __two_row_indicator_die
+function __die
     echo "two-row-indicator: $argv" >&2
     exit 1
 end
 
-function __two_row_indicator_ratio
+function __ratio
     set -l name $argv[1]
     set -l raw $argv[2]
     set -l value (math "$raw + 0" 2>/dev/null)
-    or __two_row_indicator_die "$name must be a number from 0 to 1"
-
-    if test $value -lt 0
-        __two_row_indicator_die "$name must be between 0 and 1: $raw"
-    end
-
-    if test $value -gt 1
-        __two_row_indicator_die "$name must be between 0 and 1: $raw"
-    end
-
+    or __die "$name must be a number from 0 to 1"
+    test $value -lt 0; and __die "$name must be between 0 and 1: $raw"
+    test $value -gt 1; and __die "$name must be between 0 and 1: $raw"
     echo $value
 end
 
-function __two_row_indicator_color
-    set -l name $argv[1]
-    set -l color $argv[2]
-    set_color $color >/dev/null 2>/dev/null
-    or __two_row_indicator_die "$name color is invalid: $color"
-end
-
-function __two_row_indicator_theme
-    # Echoes "top bottom bg" hex triple for the given theme name.
-    switch $argv[1]
-        case tokyonight tokyo-night
-            printf '%s\n' 7aa2f7 bb9af7 1a1b26
-        case catppuccin catppuccin-mocha mocha
-            printf '%s\n' cba6f7 f5c2e7 1e1e2e
-        case nord
-            printf '%s\n' 88c0d0 81a1c1 2e3440
-        case dracula
-            printf '%s\n' bd93f9 ff79c6 282a36
-        case gruvbox gruvbox-material
-            printf '%s\n' 8ec07c d3869b 282828
-        case cyberpunk
-            printf '%s\n' 00ffff ff0080 0a0e27
-        case muted-jewel jewel
-            printf '%s\n' e6b673 e95678 1c1e26
-        case '*'
-            __two_row_indicator_die "unknown theme: $argv[1] (available: tokyonight, catppuccin, nord, dracula, gruvbox, cyberpunk, muted-jewel)"
-    end
-end
-
-function __two_row_indicator_plain_cell
-    set -l top_filled $argv[1]
-    set -l bottom_filled $argv[2]
-
-    if test $top_filled = true; and test $bottom_filled = true
-        printf '█'
-    else if test $top_filled = true
-        printf '▀'
-    else if test $bottom_filled = true
-        printf '▄'
-    else
-        printf '░'
-    end
-end
-
-function __two_row_indicator_small_label
-    set -l kind $argv[1]
-    set -l text $argv[2]
-    set -l rendered
-    set -l top_small ᵃ ᵇ ᶜ ᵈ ᵉ ᶠ ᵍ ʰ ⁱ ʲ ᵏ ˡ ᵐ ⁿ ᵒ ᵖ ʳ ˢ ᵗ ᵘ ᵛ ʷ ˣ ʸ ᶻ ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ ⁰
-    set -l bottom_small ₐ ₑ ₕ ₖ ₗ ₘ ₙ ₒ ₚ ₛ ₜ ₓ ₁ ₂ ₃ ₄ ₅ ₆ ₇ ₈ ₉ ₀
-
-    for char in (string split '' -- $text)
-        set -l lower (string lower -- $char)
-        set -l small
-
-        if test $kind = top; and contains -- $char $top_small
-            set small $char
-        else if test $kind = bottom; and contains -- $char $bottom_small
-            set small $char
-        else
-            switch $kind:$lower
-                case top:a; set small ᵃ
-                case top:b; set small ᵇ
-                case top:c; set small ᶜ
-                case top:d; set small ᵈ
-                case top:e; set small ᵉ
-                case top:f; set small ᶠ
-                case top:g; set small ᵍ
-                case top:h; set small ʰ
-                case top:i; set small ⁱ
-                case top:j; set small ʲ
-                case top:k; set small ᵏ
-                case top:l; set small ˡ
-                case top:m; set small ᵐ
-                case top:n; set small ⁿ
-                case top:o; set small ᵒ
-                case top:p; set small ᵖ
-                case top:r; set small ʳ
-                case top:s; set small ˢ
-                case top:t; set small ᵗ
-                case top:u; set small ᵘ
-                case top:v; set small ᵛ
-                case top:w; set small ʷ
-                case top:x; set small ˣ
-                case top:y; set small ʸ
-                case top:z; set small ᶻ
-                case top:1; set small ¹
-                case top:2; set small ²
-                case top:3; set small ³
-                case top:4; set small ⁴
-                case top:5; set small ⁵
-                case top:6; set small ⁶
-                case top:7; set small ⁷
-                case top:8; set small ⁸
-                case top:9; set small ⁹
-                case top:0; set small ⁰
-                case bottom:a; set small ₐ
-                case bottom:e; set small ₑ
-                case bottom:h; set small ₕ
-                case bottom:k; set small ₖ
-                case bottom:l; set small ₗ
-                case bottom:m; set small ₘ
-                case bottom:n; set small ₙ
-                case bottom:o; set small ₒ
-                case bottom:p; set small ₚ
-                case bottom:s; set small ₛ
-                case bottom:t; set small ₜ
-                case bottom:x; set small ₓ
-                case bottom:1; set small ₁
-                case bottom:2; set small ₂
-                case bottom:3; set small ₃
-                case bottom:4; set small ₄
-                case bottom:5; set small ₅
-                case bottom:6; set small ₆
-                case bottom:7; set small ₇
-                case bottom:8; set small ₈
-                case bottom:9; set small ₉
-                case bottom:0; set small ₀
-                case '*'
-                    echo $text
-                    return 0
-            end
-        end
-
-        set -a rendered $small
-    end
-
-    string join '' -- $rendered
+function __color
+    set_color $argv[2] >/dev/null 2>/dev/null
+    or __die "$argv[1] color is invalid: $argv[2]"
 end
 
 for arg in $argv
     if string match -rq '^-[0-9]' -- $arg
-        __two_row_indicator_die "ratio must be between 0 and 1: $arg"
+        __die "ratio must be between 0 and 1: $arg"
     end
 end
 
 argparse -n two-row-indicator \
     'w/width=' \
-    'theme=' \
     'top=' \
     'bottom=' \
-    'fg=' \
     'bg=' \
-    'top-color=' \
-    'bottom-color=' \
-    'track-color=' \
-    'label-color=' \
-    'top-label=' \
-    'bottom-label=' \
-    'top-label-color=' \
-    'bottom-label-color=' \
     'top-label-text=' \
     'bottom-label-text=' \
-    'small-labels' \
     'l/label' \
-    'plain' \
     'n/no-newline' \
-    'h/help' \
     -- $argv
 or exit 1
 
-if set -q _flag_help
-    __two_row_indicator_usage
-    exit 0
-end
-
 set -l width 20
 set -q _flag_width; and set width $_flag_width
-
 string match -rq '^[1-9][0-9]*$' -- $width
-or __two_row_indicator_die "width must be a positive integer: $width"
+or __die "width must be a positive integer: $width"
 
 test (count $argv) -eq 2
-or __two_row_indicator_die "expected TOP and BOTTOM ratios"
+or __die "expected TOP and BOTTOM ratios"
 
-set -l top (__two_row_indicator_ratio TOP $argv[1])
-set -l bottom (__two_row_indicator_ratio BOTTOM $argv[2])
+set -l top (__ratio TOP $argv[1])
+set -l bottom (__ratio BOTTOM $argv[2])
 
 set -l top_color 8fbcbb
 set -l bottom_color 88c0d0
 set -l bg_color 3b4252
-
-if set -q _flag_theme
-    set -l theme_colors (__two_row_indicator_theme $_flag_theme)
-    set top_color $theme_colors[1]
-    set bottom_color $theme_colors[2]
-    set bg_color $theme_colors[3]
-end
-
-if set -q _flag_fg
-    set top_color $_flag_fg
-    set bottom_color $_flag_fg
-end
-
-set -q _flag_top_color; and set top_color $_flag_top_color
-set -q _flag_bottom_color; and set bottom_color $_flag_bottom_color
 set -q _flag_top; and set top_color $_flag_top
 set -q _flag_bottom; and set bottom_color $_flag_bottom
-set -q _flag_track_color; and set bg_color $_flag_track_color
 set -q _flag_bg; and set bg_color $_flag_bg
 
-set -l top_label_color $top_color
-set -l bottom_label_color $bottom_color
-
-if set -q _flag_label_color
-    set top_label_color $_flag_label_color
-    set bottom_label_color $_flag_label_color
-end
-
-set -q _flag_top_label; and set top_label_color $_flag_top_label
-set -q _flag_bottom_label; and set bottom_label_color $_flag_bottom_label
-set -q _flag_top_label_color; and set top_label_color $_flag_top_label_color
-set -q _flag_bottom_label_color; and set bottom_label_color $_flag_bottom_label_color
-
-if not set -q _flag_plain
-    __two_row_indicator_color top $top_color
-    __two_row_indicator_color bottom $bottom_color
-    __two_row_indicator_color bg $bg_color
-    __two_row_indicator_color top-label $top_label_color
-    __two_row_indicator_color bottom-label $bottom_label_color
-end
+__color top $top_color
+__color bottom $bottom_color
+__color bg $bg_color
 
 set -l top_cells (math -s0 "round($top * $width)")
 set -l bottom_cells (math -s0 "round($bottom * $width)")
@@ -578,60 +309,29 @@ set -l bottom_cells (math -s0 "round($bottom * $width)")
 if set -q _flag_label
     set -l top_label (math -s0 "round($top * 100)")
     set -q _flag_top_label_text; and set top_label $_flag_top_label_text
-    if set -q _flag_small_labels
-        set top_label (__two_row_indicator_small_label top $top_label)
-    end
-
-    if not set -q _flag_plain
-        set_color $top_label_color
-    end
-
+    set_color $top_color
     printf '%s' $top_label
 end
 
 for i in (seq 1 $width)
-    set -l top_filled false
-    set -l bottom_filled false
     set -l fg $bg_color
     set -l bg $bg_color
-
-    if test $i -le $top_cells
-        set top_filled true
-        set fg $top_color
-    end
-
-    if test $i -le $bottom_cells
-        set bottom_filled true
-        set bg $bottom_color
-    end
-
-    if set -q _flag_plain
-        __two_row_indicator_plain_cell $top_filled $bottom_filled
-    else
-        set_color $fg
-        set_color --background $bg
-        printf '▀'
-    end
+    test $i -le $top_cells; and set fg $top_color
+    test $i -le $bottom_cells; and set bg $bottom_color
+    set_color $fg
+    set_color --background $bg
+    printf '▀'
 end
 
 if set -q _flag_label
     set -l bottom_label (math -s0 "round($bottom * 100)")
     set -q _flag_bottom_label_text; and set bottom_label $_flag_bottom_label_text
-    if set -q _flag_small_labels
-        set bottom_label (__two_row_indicator_small_label bottom $bottom_label)
-    end
-
-    if not set -q _flag_plain
-        set_color normal
-        set_color $bottom_label_color
-    end
-
+    set_color normal
+    set_color $bottom_color
     printf '%s' $bottom_label
 end
 
-if not set -q _flag_plain
-    set_color normal
-end
+set_color normal
 
 if not set -q _flag_no_newline
     echo
@@ -640,7 +340,7 @@ end
 
 :::
 
-fish が肌に合わなきゃ Rust でも Go でも書き直せ。要は半ブロック `▀` の前景色と背景色を独立に塗り分けて、ラベル文字のセルだけ塗りをラベル色に置換すりゃいいだけだ。仕掛けは単純、彫り方は船長の好み。
+fish が肌に合わなきゃ Rust でも Go でも書き直せ。要は半ブロック `▀` の前景色 (上の比率) と背景色 (下の比率) を独立に塗り分けて、両端にラベルを添えるだけだ。仕掛けは単純、彫り方は船長の好み。
 
 ## 配線——`settings.json` に繋ぐ
 
