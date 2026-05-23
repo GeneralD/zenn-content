@@ -6,7 +6,7 @@ topics: ["claudecode", "statusline", "bash", "productivity", "tui"]
 published: true
 ---
 
-![cover](/images/claude-code-statusline-pacing-compass/hero.jpg)
+![cover](/images/claude-code-twin-bar-rate-compass/hero.jpg)
 
 港までの距離と、樽の水の残り。船で命を握る数字はこの二つだけだ。
 甲板に立つ船長が、毎秒それを別々の頭で計算してると思うか？ しねえよ。
@@ -66,7 +66,7 @@ opus 4.7  ⏳ 3h45m  🪙 47%  📊 2d3h  🪙 12%
 
 これを見ろ。5 時間窓は時間 > トークンで「水が足りねえ気味」、7 日窓は時間が遥かにあるのに樽がほぼ空、つまり**今週は明らかに使い過ぎ**だと、ひと目で判る。`12%` という数字も `2d3h` という時刻も、もう要らねえ。バーが教えてくれる。
 
-![羊皮紙に上下二段で描かれたバーを、真鍮のコンパスで測る](/images/claude-code-statusline-pacing-compass/spot-3-bars-parchment.jpg =480x)
+![羊皮紙に上下二段で描かれたバーを、真鍮のコンパスで測る](/images/claude-code-twin-bar-rate-compass/spot-3-bars-parchment.jpg =480x)
 
 おい野郎ども、これは宝だ。
 
@@ -176,7 +176,7 @@ render_window "7d" "$SEVEN_USED" "$SEVEN_RESET" $(( 7 * 86400 ))
 
 白状する。俺の艤装はもう一段奥にある。**最小版の 80 行で十分動く、これは趣味だ**。読み飛ばしても航海に支障はねえ。
 
-![本物の statusline。5h パネル (ピンク + シアン) と 7d パネル (紫 + 黄) が powerline の樽蓋で 1 行に繋がってる](/images/claude-code-statusline-pacing-compass/statusline-real.png =1000x)
+![本物の statusline。5h パネル (ピンク + シアン) と 7d パネル (紫 + 黄) が powerline の樽蓋で 1 行に繋がってる](/images/claude-code-twin-bar-rate-compass/statusline-real.png =1000x)
 
 **「縦並び」と俺は言ったが、本物はもう一段欺いてる**。上下二段に見えるあれは 1 行に詰まってる。種は Unicode の half-block——`▀` ([U+2580 UPPER HALF BLOCK](https://www.unicode.org/charts/PDF/U2580.pdf)) と `▄` (U+2584 LOWER HALF BLOCK) と `█` (U+2588 FULL BLOCK) を組み合わせて、1 文字の中で **前景色を上段バー、背景色を下段バー** に塗り分けてる。論理的には 2 行、物理的には 1 行。Claude Code の statusline は行数が惜しい——その下にパスや git のセグメントを引き連れる余地を残すために、二段ぶんを 1 行に畳んでる。pure-bash 版が `printf` 2 回で 4 行使ってたのに対して、本物は半分の高さで同じ情報を出す。
 
@@ -263,7 +263,7 @@ flowchart LR
 
 ### パターン 1: 時間バー > トークンバー — 水が足りねえ
 
-![帆を畳んで速度を落とす船。樽は空、海はまだ広い](/images/claude-code-statusline-pacing-compass/spot-1-water-shortage.jpg =480x)
+![帆を畳んで速度を落とす船。樽は空、海はまだ広い](/images/claude-code-twin-bar-rate-compass/spot-1-water-shortage.jpg =480x)
 
 港まではまだ遠い。なのに樽の中の真水はもう底が見えてる。これは**使い過ぎ**だ。
 
@@ -271,7 +271,7 @@ flowchart LR
 
 ### パターン 2: 時間バー < トークンバー — 余ってる
 
-![「もう一艘出せ！」並走する仲間船を呼ぶ船長](/images/claude-code-statusline-pacing-compass/spot-2-parallel-ships.jpg =480x)
+![「もう一艘出せ！」並走する仲間船を呼ぶ船長](/images/claude-code-twin-bar-rate-compass/spot-2-parallel-ships.jpg =480x)
 
 樽はまだ半分以上ある。なのにリセットは目前。これは**もう一艘出すタイミング**だ。
 
