@@ -84,6 +84,8 @@ GitHub のコメント欄には**二種類**ある。そして、俺の finder �
 
 そして `owner/repo` のショートハンドは必ず `/issues/new`（= (1)）しか開かない。**俺はテストでショートハンドしか踏んでなかった。** 生 URL を直接渡すという自分で用意した経路を、作り主が一度も歩いてなかった。これが澱だ。
 
+![ランタンを掲げ「Markdown」の酒場の戸口を検める海賊——同じに見えて別物の、二種類のコメント欄に挑む場面](/images/gh-img-two-composers/two-composers.png =540x)
+
 ## 直し方
 
 直し方は分かれば一行だ。finder を「**どっちのシグナルでもマッチ**」に変える。「Markdown」を名乗ってるか、または `id="new_comment_field"` を持ってるか。どちらかが立てば拾う。
@@ -107,6 +109,8 @@ pw drop 'textarea[placeholder*="Markdown" i], textarea[aria-label*="Markdown" i]
 finder の三条件と、この CSS セレクタの三つのコンマ区切りが**完全に同じ集合**を、**同じ DOM 出現順の先頭**で指す。これが効く。探す欄と落とす欄は同じ一個でなきゃならねえ。隠れたアンケート欄やインライン diff の `comment[body]` 欄はどのシグナルも立てないから、勝手に除外される。ちょうどいい。
 
 おい野郎ども、宝はここだ。**「同じ概念に見えて DOM 上は別物の UI」は、属性一個に頼ると必ず取りこぼす。** 安定した名札（`id`）と、意味の名札（`aria-label`/placeholder）の**両方**を OR で束ねろ。片方が消えても、もう片方が船を繋ぐ。
+
+![鎖と赤い×で固く閉ざされた「API」の門の前、NO ACCESS の小舟に立つ海賊——公式の窓口は閉まっている。回り込んで掴む修正の核心](/images/gh-img-two-composers/the-fix.png =600x)
 
 ## ついでに踏んだ罠: ブラウザ選択は env でやるな
 
@@ -143,6 +147,8 @@ exit code も覚えとくと再現が速い。
 | `6` | URL が返ってこない（タイムアウト or 拒否） |
 
 ファイルは [`DataTransfer`](https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer) として合成されてページに渡る。作業ディレクトリの外でも読めるから、パスの境界は防壁にならねえ。守ってるのは host gate だけだ。安全弁は一個しかねえ、錆びさせるな。
+
+![戸口の前で「?」を浮かべ、開ける前に行き先を検める海賊——信頼できない URL に画像を落とすな、という唯一の防壁](/images/gh-img-two-composers/safety.png =540x)
 
 ## セットアップ
 
