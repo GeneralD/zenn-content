@@ -114,18 +114,13 @@ finder の三条件と、この CSS セレクタの三つのコンマ区切り�
 
 `gh img` は永続ログイン済みのプロファイルで動く。一度 `gh img --login` すれば cookie が残り、次から黙って動く。ところがこのブラウザ選択を [`PLAYWRIGHT_MCP_BROWSER`](https://github.com/microsoft/playwright-mcp) という環境変数でやると、`chromium` が [chrome-for-testing](https://developer.chrome.com/blog/chrome-for-testing) に解決されちまう。こいつは**別の cookie ストア**を持ってる。ログインが静かに消えて、エラーも出ず、毎回 exit 3 で落ちる。
 
-だから `gh-img` はブラウザ選択を**設定ファイル**でやる。[`$XDG_CONFIG_HOME`](https://specifications.freedesktop.org/basedir-spec/latest/)`/playwright-cli/cli.config.json` にこう書く。
+だから `gh-img` はブラウザ選択を**設定ファイル**でやる。[`$XDG_CONFIG_HOME`](https://specifications.freedesktop.org/basedir-spec/latest/)`/playwright-cli/cli.config.json` の肝はこの一行だ。
 
 ```json
-{
-  "browser": {
-    "browserName": "chromium",
-    "launchOptions": { "channel": "chromium", "headless": true }
-  }
-}
+"launchOptions": { "channel": "chromium", "headless": true }
 ```
 
-`channel: "chromium"` を [`launchOptions`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-channel) で指定すれば、永続ログインプロファイルを掴んだままのブラウザが起動する。同じ "chromium" って文字列なのに、env だと別物に化けてファイルだと正しく掴む。ブラウザ選択だけはファイルに刻め。
+`channel: "chromium"` を [`launchOptions`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-channel) で指定すれば、永続ログインプロファイルを掴んだままのブラウザが起動する。同じ "chromium" って文字列なのに、env だと別物に化けてファイルだと正しく掴む。ブラウザ選択だけはファイルに刻め。設定ファイルの全文は後の「セットアップ」で渡す。
 
 cookie 自体は [`$XDG_STATE_HOME`](https://specifications.freedesktop.org/basedir-spec/latest/)`/gh-img/userdata` に `0700` で置いてある。アカウントと等価の秘密だからな。**秘密は庫を分けて隔離する**——この感覚は別の航海で一本書いた。地続きだから寄ってけ。
 
@@ -149,17 +144,81 @@ exit code も覚えとくと再現が速い。
 
 ファイルは [`DataTransfer`](https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer) として合成されてページに渡る。作業ディレクトリの外でも読めるから、パスの境界は防壁にならねえ。守ってるのは host gate だけだ。安全弁は一個しかねえ、錆びさせるな。
 
-## 次の一手
+## セットアップ
 
-月曜の朝、お前らが再現できる核だけ瓶に詰めて渡す。
+能書きはここまでだ。ここからは現物を渡す。月曜の朝、素のマシンで `gh img` が動くまでの全工程を順に積む。途中を端折ると船は出ねえから、上から順に踏め。
 
-- **使い方**: [Homebrew](https://brew.sh/) で [`playwright-cli`](https://formulae.brew.sh/formula/playwright-cli) を入れて、`gh img --login` を一回。あとは `gh img <png> <issue-or-pr-url>` で URL が標準出力に出る。[`gh` のエイリアス](https://cli.github.com/manual/gh_alias)に積めば `gh img` で呼べる。
-- **思想**: 第三者の公開ホストに画像を上げるな。GitHub 自身の [user-attachments](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files) に置けば、添付は repo の可視性に従う。private repo の添付は認証越しでしか `200` を返さねえ。匿名で叩きゃ `404` だ。つまり**第三者公開ホストじゃねえ**。これが大きい。
-- **設計の教訓**: UI を要素一個の属性で掴むな。安定 ID と意味属性を OR で束ねろ。そして——自分で用意した経路は、自分で全部歩け。俺は二本道を作って一本しか踏まず、残り一本で転んだ。テストは `owner/repo` だけじゃなく生 URL も叩け。
+**1. playwright-cli を入れる。** gh-img が裏で操る headless ブラウザの操舵輪だ。[Homebrew](https://brew.sh/) で一発。
 
-そして——船を一隻まるごと渡す。能書きより現物だ。下の全文を `~/.config/gh/bin/gh-img` に置いて実行権を立て、[`gh` のエイリアス](https://cli.github.com/manual/gh_alias)に `img: '!~/.config/gh/bin/gh-img "$@"'` を一行足せば、お前の手元でそのまま動く。`brew install playwright-cli` と `playwright-cli install-browser chromium` だけ先に済ませとけ。秘密リテラルは一個も無い——cookie は実行時に `$XDG_STATE_HOME` 下の専用プロファイルに溜まるだけだ。これが今日の宝の本体だ。持ってけ。
+```bash
+brew install playwright-cli
+playwright-cli install-browser chromium   # PLAYWRIGHT_BROWSERS_PATH 下に Chromium 本体を落とす
+```
 
-:::details gh-img 全文（そのまま `~/.config/gh/bin/gh-img` に置けば動く）
+**2. スクリプト本体を置いて実行権を立てる。** 全文は次の「gh-img 全文」の節にある。コピって `~/.config/gh/bin/gh-img` に保存しろ。
+
+```bash
+mkdir -p ~/.config/gh/bin
+# 次節の全文を ~/.config/gh/bin/gh-img に保存してから:
+chmod +x ~/.config/gh/bin/gh-img
+```
+
+**3. ブラウザ選択の設定ファイルを置く。** [`$XDG_CONFIG_HOME`](https://specifications.freedesktop.org/basedir-spec/latest/)`/playwright-cli/cli.config.json`（既定で `~/.config/playwright-cli/cli.config.json`）に、俺の手元の全文をそのまま置く。
+
+```json:~/.config/playwright-cli/cli.config.json
+{
+  "$schema": "./cli.config.schema.json",
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "channel": "chromium",
+      "headless": true
+    },
+    "contextOptions": {
+      "viewport": { "width": 1280, "height": 800 }
+    }
+  },
+  "timeouts": {
+    "action": 10000,
+    "navigation": 60000
+  }
+}
+```
+
+`$schema` は俺の手元の隣に置いた検証用ファイルへのローカル参照だ。お前の手元に無くても動く——気になるなら一行消せ。前に語ったとおり、`channel: "chromium"` が**この記事の肝**だ。これを env (`PLAYWRIGHT_MCP_BROWSER`) でやると別の cookie ストアに化けてログインが静かに消える。ファイルに刻め。
+
+なお、このファイルを置き忘れても gh-img の `ensure_config` が**最小構成を自動生成する**から、`channel: "chromium"` だけは勝手に効く。手で置く意味は、`viewport` と `timeouts` を自分好みに刻めることだ。重いページで `4` が出るなら `navigation` を伸ばせ。
+
+**4. `gh` のエイリアスに積む。** [`~/.config/gh/config.yml`](https://cli.github.com/manual/gh_alias) の `aliases:` ブロックに一行足す。これで `~/.config/gh/bin/gh-img ...` が `gh img ...` で呼べる。
+
+```yaml:~/.config/gh/config.yml
+aliases:
+    img: '!~/.config/gh/bin/gh-img "$@"'
+```
+
+**5. 一度だけ手でログインする。** これで永続プロファイルに cookie が焼かれる。次からは黙って動く。
+
+```bash
+gh img --login        # ブラウザが開く。GitHub にログイン（2FA 込み）して Enter を押せ
+```
+
+cookie は [`$XDG_STATE_HOME`](https://specifications.freedesktop.org/basedir-spec/latest/)`/gh-img/userdata` に `0700` で焼かれる。アカウントと等価の秘密だからな。git には絶対乗せるな。
+
+**6. あとは使うだけだ。**
+
+```bash
+gh img /tmp/lgtm.png https://github.com/<owner>/<repo>/pull/42
+# -> https://github.com/user-attachments/assets/<uuid> が標準出力に出る
+#    コメントは送られない。URL だけ持って船を降りる
+```
+
+標準出力に出た URL を、お前の PR レビューでも Issue 本文でも、好きな Markdown に `![alt](その URL)` で差し込め。それだけだ。
+
+転んだら exit code を見ろ。前の「安全弁」の節に出した exit code 表が、そのまま再現のデバッグ表になる。`3` ならログインし直し、`4` なら欄が生える前にタイムアウトしてる（重いページなら `navigation` を伸ばせ）、`5` はドロップ先の DOM が変わった合図だ。
+
+## gh-img 全文
+
+宝の本体だ。181 行、丸ごと載せる。秘密リテラルは一個も無い——cookie は実行時に専用プロファイルに溜まるだけで、ソース自体は完全に portable だ。コメントも全部残してある。なぜブラウザを使うか、なぜ env じゃなく設定ファイルか、なぜ二種の finder か——船の設計図はソースの中に彫ってある。読んでから乗れ。
 
 ```bash:~/.config/gh/bin/gh-img
 #!/usr/bin/env bash
@@ -344,6 +403,14 @@ pw --raw eval "() => { const t = $finder; if (t) { const s = Object.getOwnProper
 printf '%s\n' "$url"
 ```
 
-:::
+これで船は一隻まるごとお前の手に渡った。能書きより現物だ。持ってけ。
+
+## 次の一手
+
+月曜の朝に効く、三つの錨だけ残す。
+
+- **使い方**: 上のセットアップを上から踏めば、`gh img <png> <issue-or-pr-url>` で `https://github.com/user-attachments/assets/<uuid>` が標準出力に出る。それを Markdown に差し込むだけだ。コメントは送られない。
+- **思想**: 第三者の公開ホストに画像を上げるな。GitHub 自身の [user-attachments](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files) に置けば、添付は repo の可視性に従う。private repo の添付は認証越しでしか `200` を返さねえ。匿名で叩きゃ `404` だ。つまり**第三者公開ホストじゃねえ**。これが大きい。
+- **設計の教訓**: UI を要素一個の属性で掴むな。安定 ID と意味属性を OR で束ねろ。そして——自分で用意した経路は、自分で全部歩け。俺は二本道を作って一本しか踏まず、残り一本で転んだ。テストは `owner/repo` だけじゃなく生 URL も叩け。
 
 公式 upload API がいつか降ってきたら、この小舟は捨てる。[`gh api`](https://cli.github.com/manual/gh_api) に乗り換えて playwright ごと海に蹴り落とす。それまではこいつが俺の船を運ぶ。お前らの船でも好きに使え。ゲプッ。
