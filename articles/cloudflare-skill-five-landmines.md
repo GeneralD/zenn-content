@@ -12,8 +12,6 @@ published: true
 
 [Astro](https://astro.build/) + [Cloudflare Workers](https://developers.cloudflare.com/workers/) でランディングページを自動デプロイする Claude Code スキル——`launch-site`——を作った。作り終えた今、5つの罠の残骸が甲板に散らばってる。ドキュメントに書いてない罠、思い込みの罠、「え、それ仕様なの?」な罠。これはその航海日誌だ。
 
-スキルのソースは[ここ](https://github.com/GeneralD/.config/tree/main/claude/skills/launch-site)に置いてある。
-
 ---
 
 ## 罠 1: Cloudflare Workers Builds に REST API はない
