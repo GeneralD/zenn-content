@@ -74,7 +74,7 @@ flowchart LR
 
     subgraph T["テストから見えるモジュール"]
         H1["fetchUser → フェイク"]
-        H2["postEvent → undefined"]
+        H2["postEvent → 触った瞬間エラー"]
     end
 
     V --> T
@@ -83,7 +83,7 @@ flowchart LR
     style H2 fill:#4a1010,stroke:#ff4444,color:#fff
 ```
 
-factory が `fetchUser` しか返さなければ、`postEvent` は「元の実装が生きてる」んじゃなく、単に**存在しないプロパティ**になる。JS のオブジェクトに無いキーへのアクセスは `undefined` だ。それを関数として呼べば `TypeError` で落ちる。
+factory が `fetchUser` しか返さなければ、`postEvent` は「元の実装が生きてる」わけじゃねえ。だが、素の `undefined` になって静かに転がってるわけでもねえ。Vitest は factory が返した object をそのまま公開せず、Proxy で包んで見張ってやがる。だから factory が返さなかった export に指一本触れた瞬間——**関数として呼ぶ前だ、`typeof` で覗いただけでも**——専用のエラーが飛んでくる。`undefined` を呼んで `TypeError` で沈む、なんて悠長な話じゃねえ。触れた時点でジ・エンドだ。
 
 これは Vitest の公式ドキュメントにも書いてある挙動で、`vi.mock` 単体としてはバグでも何でもない。仕様通りだ。踏み抜くのはそこじゃない。
 
